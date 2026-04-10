@@ -1,0 +1,4 @@
+/codify-ip
+/geoip/*.mmdb
+/tmp/
+.DS_Store
