@@ -81,6 +81,7 @@ var pageTemplate = template.Must(template.New("index").Parse(`<!doctype html>
   </div>
   <p>CLI: <code>curl {{.BaseURL}}ip</code> or <code>curl {{.BaseURL}}json</code></p>
   <p>Endpoints: <a href="{{.BaseURL}}ip">ip</a>, <a href="{{.BaseURL}}json">json</a>, <a href="{{.BaseURL}}headers">headers</a>, <a href="{{.BaseURL}}all">all</a>, <a href="{{.BaseURL}}all.json">all.json</a>.</p>
+  <p>IP geolocation by <a href="https://db-ip.com">DB-IP</a>.</p>
 </main>
 </body>
 </html>`))

@@ -78,7 +78,7 @@ jobs:
           cd /app/ip
           git fetch origin main
           git reset --hard origin/main
-          mkdir -p geoip
+          ./scripts/update-dbip-lite.sh geoip
           docker compose up -d --build
           curl -fsS http://127.0.0.1:3010/ip/healthz
           SSH_EOF

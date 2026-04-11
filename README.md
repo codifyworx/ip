@@ -39,25 +39,31 @@ curl http://127.0.0.1:3010/ip/json
 
 ## GeoIP
 
-GeoIP is optional. Without databases, the service still returns IP and header data.
+GeoIP is backed by DB-IP Lite MMDB databases. Without databases, the service still returns IP and header data but cannot show ISP, ASN, or location.
 
-Mount MaxMind databases at:
+Download/update the monthly free databases:
 
-```text
-geoip/GeoLite2-City.mmdb
-geoip/GeoLite2-ASN.mmdb
+```bash
+./scripts/update-dbip-lite.sh geoip
 ```
 
-Then set:
+Mount DB-IP databases at:
 
 ```text
-GEOIP_CITY_DB=/geoip/GeoLite2-City.mmdb
-GEOIP_ASN_DB=/geoip/GeoLite2-ASN.mmdb
+geoip/dbip-city-lite.mmdb
+geoip/dbip-asn-lite.mmdb
 ```
 
-The default compose deployment does not set these paths so a missing database cannot keep the service from starting.
+The compose file sets:
+
+```text
+GEOIP_CITY_DB=/geoip/dbip-city-lite.mmdb
+GEOIP_ASN_DB=/geoip/dbip-asn-lite.mmdb
+```
 
 Do not commit `.mmdb` files.
+
+The Lite databases are provided by DB-IP under CC BY 4.0. Keep the DB-IP attribution visible in the rendered page.
 
 ## Reverse Proxy
 
@@ -85,6 +91,7 @@ labels:
 ## Deployment
 
 `main` CI deploys to `/app/ip` on `codifyworx.com` after tests pass.
+The deploy step updates DB-IP Lite databases under `/app/ip/geoip`, rebuilds the container, restarts it, and health-checks `/ip/healthz`.
 
 It expects the same SSH secret pattern used by other Codifyworx projects:
 
