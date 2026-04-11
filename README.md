@@ -34,7 +34,7 @@ curl http://127.0.0.1:8080/ip/json
 
 ```bash
 docker compose up --build
-curl http://127.0.0.1:8080/ip/json
+curl http://127.0.0.1:3010/ip/json
 ```
 
 ## GeoIP
@@ -59,7 +59,7 @@ Do not commit `.mmdb` files.
 
 ## Reverse Proxy
 
-For `https://codifyworx.com/ip/`, route `/ip` and `/ip/*` to the container on port `8080`.
+For `https://codifyworx.com/ip/`, route `/ip` and `/ip/*` to the container on `127.0.0.1:3010`.
 
 Keep `BASE_PATH=/ip` unless the reverse proxy strips the `/ip` prefix before forwarding.
 
@@ -78,4 +78,21 @@ labels:
   - traefik.http.routers.codify-ip.entrypoints=websecure
   - traefik.http.routers.codify-ip.tls.certresolver=letsencrypt
   - traefik.http.services.codify-ip.loadbalancer.server.port=8080
+```
+
+## Deployment
+
+`main` CI deploys to `/app/ip` on `codifyworx.com` after tests pass.
+
+It expects the same SSH secret pattern used by other Codifyworx projects:
+
+```text
+PUBLISH_SSH_KEY_BASE64 or PUBLISH_SSH_KEY
+```
+
+Optional repo/org variables:
+
+```text
+PUBLISH_HOST=codifyworx.com
+PUBLISH_USER=root
 ```

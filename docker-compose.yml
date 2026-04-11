@@ -13,4 +13,4 @@ services:
     volumes:
       - ./geoip:/geoip:ro
     ports:
-      - "8080:8080"
+      - "${IP_HOST_BIND:-127.0.0.1}:${IP_HOST_PORT:-3010}:8080"
