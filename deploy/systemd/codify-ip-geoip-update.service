@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh codifyworx IP DB-IP Lite geolocation databases
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/app/ip
+ExecStart=/app/ip/scripts/refresh-dbip-lite.sh

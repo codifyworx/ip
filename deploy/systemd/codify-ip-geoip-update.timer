@@ -1,0 +1,11 @@
+[Unit]
+Description=Monthly DB-IP Lite refresh for codifyworx IP
+
+[Timer]
+OnCalendar=*-*-03 04:30:00
+RandomizedDelaySec=6h
+Persistent=true
+Unit=codify-ip-geoip-update.service
+
+[Install]
+WantedBy=timers.target

@@ -2,7 +2,7 @@
 
 Small `ifconfig.me`-style service for `https://codifyworx.com/ip/`.
 
-It returns the caller's public IP plus optional ISP, ASN, and geolocation metadata when MaxMind databases are mounted.
+It returns the caller's public IP plus ISP, ASN, and geolocation metadata from DB-IP Lite databases.
 
 ## Endpoints
 
@@ -92,6 +92,9 @@ labels:
 
 `main` CI deploys to `/app/ip` on `codifyworx.com` after tests pass.
 The deploy step updates DB-IP Lite databases under `/app/ip/geoip`, rebuilds the container, restarts it, and health-checks `/ip/healthz`.
+
+CI also runs monthly on the 3rd to refresh DB-IP Lite data when publish SSH credentials are configured.
+The production host also runs `codify-ip-geoip-update.timer`, which calls `scripts/refresh-dbip-lite.sh` monthly so database updates do not depend on an app deploy.
 
 It expects the same SSH secret pattern used by other Codifyworx projects:
 

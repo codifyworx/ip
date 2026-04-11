@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "30 4 3 * *"
+  workflow_dispatch:
 
 jobs:
   test:
@@ -20,7 +23,7 @@ jobs:
       - run: docker build -t codifyworx/ip:ci .
       - name: Check deploy credentials
         id: deploy-credentials
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           PUBLISH_SSH_KEY_BASE64: ${{ secrets.PUBLISH_SSH_KEY_BASE64 }}
           PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
@@ -78,9 +81,7 @@ jobs:
           cd /app/ip
           git fetch origin main
           git reset --hard origin/main
-          ./scripts/update-dbip-lite.sh geoip
-          docker compose up -d --build
-          curl -fsS http://127.0.0.1:3010/ip/healthz
+          ./scripts/refresh-dbip-lite.sh
           SSH_EOF
       - name: Cleanup deploy SSH key
         if: always()
