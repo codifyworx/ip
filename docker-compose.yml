@@ -1,5 +1,5 @@
 services:
-  ip:
+  ip: &ip-service
     build: .
     image: ghcr.io/codifyworx/ip:latest
     container_name: codify-ip
@@ -14,3 +14,15 @@ services:
       - ./geoip:/geoip:ro
     ports:
       - "${IP_HOST_BIND:-127.0.0.1}:${IP_HOST_PORT:-3010}:8080"
+
+  ifconfig:
+    <<: *ip-service
+    container_name: ifconfig-fyi
+    environment:
+      ADDR: ":8080"
+      BASE_PATH: "/"
+      GEOIP_CITY_DB: "/geoip/dbip-city-lite.mmdb"
+      GEOIP_ASN_DB: "/geoip/dbip-asn-lite.mmdb"
+      TRUSTED_PROXY_CIDRS: "127.0.0.1/32,::1/128,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
+    ports:
+      - "${IFCONFIG_HOST_BIND:-127.0.0.1}:${IFCONFIG_HOST_PORT:-3011}:8080"

@@ -1,6 +1,6 @@
 # codifyworx IP
 
-Small `ifconfig.me`-style service for `https://codifyworx.com/ip/`.
+Small `ifconfig.me`-style service for `https://codifyworx.com/ip/` and `https://ifconfig.fyi/`.
 
 It returns the caller's public IP plus ISP, ASN, and geolocation metadata from DB-IP Lite databases.
 
@@ -20,6 +20,19 @@ It returns the caller's public IP plus ISP, ASN, and geolocation metadata from D
 /ip/mime      accept header
 /ip/forwarded X-Forwarded-For
 /ip/healthz   health check
+```
+
+On `ifconfig.fyi`, the same handlers run at the domain root:
+
+```text
+/           HTML summary
+/ip         plain text IP
+/json       structured JSON
+/geo        structured JSON with geo fields when configured
+/headers    request headers as JSON
+/all        text summary
+/all.json   JSON summary
+/healthz    health check
 ```
 
 ## Run Locally
@@ -92,6 +105,7 @@ labels:
 
 `main` CI deploys to `/app/ip` on `codifyworx.com` after tests pass.
 The deploy step updates DB-IP Lite databases under `/app/ip/geoip`, rebuilds the container, restarts it, and health-checks `/ip/healthz`.
+Compose runs two services from the same image: `codify-ip` for path-based `codifyworx.com/ip/` on `127.0.0.1:3010`, and `ifconfig-fyi` for root-hosted `ifconfig.fyi/` on `127.0.0.1:3011`.
 
 CI also runs monthly on the 3rd to refresh DB-IP Lite data when publish SSH credentials are configured.
 The production host also runs `codify-ip-geoip-update.timer`, which calls `scripts/refresh-dbip-lite.sh` monthly so database updates do not depend on an app deploy.
