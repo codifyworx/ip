@@ -48,12 +48,14 @@ geoip/GeoLite2-City.mmdb
 geoip/GeoLite2-ASN.mmdb
 ```
 
-The compose file sets:
+Then set:
 
 ```text
 GEOIP_CITY_DB=/geoip/GeoLite2-City.mmdb
 GEOIP_ASN_DB=/geoip/GeoLite2-ASN.mmdb
 ```
+
+The default compose deployment does not set these paths so a missing database cannot keep the service from starting.
 
 Do not commit `.mmdb` files.
 

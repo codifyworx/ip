@@ -67,6 +67,7 @@ jobs:
           git reset --hard origin/main
           mkdir -p geoip
           docker compose up -d --build
+          curl -fsS http://127.0.0.1:3010/ip/healthz
           SSH_EOF
       - name: Cleanup deploy SSH key
         if: always()
