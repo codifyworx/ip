@@ -4,6 +4,8 @@ Small `ifconfig.me`-style service for `https://codifyworx.com/ip/` and `https://
 
 It returns the caller's public IP plus ISP, ASN, and geolocation metadata from DB-IP Lite databases.
 
+See [DEPLOY.md](DEPLOY.md) for host bootstrap, nginx, timer, CI, and validation steps.
+
 ## Endpoints
 
 ```text

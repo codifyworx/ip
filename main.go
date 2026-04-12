@@ -61,7 +61,9 @@ var pageTemplate = template.Must(template.New("index").Parse(`<!doctype html>
     :root { color-scheme: light dark; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     body { margin: 0; padding: 2rem; line-height: 1.45; }
     main { max-width: 760px; margin: 0 auto; }
-    .ip { font-size: clamp(2rem, 8vw, 5rem); font-weight: 800; letter-spacing: -0.08em; overflow-wrap: anywhere; }
+    .ip { font-weight: 800; letter-spacing: 0; white-space: nowrap; }
+    .ip.ipv4 { font-size: clamp(2rem, 8vw, 5rem); }
+    .ip.ipv6 { font-size: clamp(0.85rem, 3.5vw, 2rem); }
     .grid { display: grid; grid-template-columns: 10rem 1fr; gap: .5rem 1rem; margin: 2rem 0; }
     code { background: color-mix(in srgb, CanvasText 8%, transparent); padding: .1rem .35rem; border-radius: .25rem; }
     a { color: inherit; }
@@ -71,7 +73,7 @@ var pageTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <body>
 <main>
   <div>Your public IP is</div>
-  <div class="ip">{{.IP}}</div>
+  <div class="ip {{.IPClass}}">{{.IP}}</div>
   <div class="grid">
     <div>Version</div><div>{{.Version}}</div>
     <div>ASN</div><div>{{if .ASN}}{{.ASN}}{{else}}unavailable{{end}}</div>
@@ -216,12 +218,15 @@ func (a *app) stripBasePath(path string) string {
 
 func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	info := a.describe(r, true)
 	data := struct {
 		ipResponse
 		BaseURL string
+		IPClass string
 	}{
-		ipResponse: a.describe(r, true),
+		ipResponse: info,
 		BaseURL:    a.baseURL(),
+		IPClass:    ipDisplayClass(info.Version),
 	}
 	if err := pageTemplate.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -420,4 +425,11 @@ func normalizeBasePath(path string) string {
 	}
 	path = "/" + strings.Trim(path, "/")
 	return path
+}
+
+func ipDisplayClass(version string) string {
+	if version == "IPv6" {
+		return "ipv6"
+	}
+	return "ipv4"
 }
