@@ -1,4 +1,18 @@
 /codify-ip
 /geoip/*.mmdb
 /tmp/
+
+# macOS
 .DS_Store
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Local overrides
+*.local
+
+# AI review artifacts
+codex.out.md
+claude.out.md

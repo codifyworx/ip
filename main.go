@@ -17,14 +17,14 @@ import (
 )
 
 type config struct {
-	addr          string
-	basePath      string
-	trustedCIDRs  []*net.IPNet
-	geoCityPath   string
-	geoASNPath    string
-	readTimeout   time.Duration
-	writeTimeout  time.Duration
-	idleTimeout   time.Duration
+	addr         string
+	basePath     string
+	trustedCIDRs []*net.IPNet
+	geoCityPath  string
+	geoASNPath   string
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	idleTimeout  time.Duration
 }
 
 type app struct {

@@ -8,19 +8,31 @@ on:
     - cron: "30 4 3 * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6.4.0
         with:
-          go-version: "1.22"
+          go-version: stable
           cache: false
-      - run: gofmt -w main.go
-      - run: go mod tidy
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "$files"
+            exit 1
+          fi
+      - name: Check module files
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
       - run: go test ./...
-      - run: docker build -t codifyworx/ip:ci .
+      - run: docker build -t local/codify-ip:ci .
       - name: Check deploy credentials
         id: deploy-credentials
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
