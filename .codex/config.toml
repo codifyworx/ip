@@ -1,0 +1,4 @@
+# PAWS project Codex defaults.
+# Override with a different profile or a repo-local adjustment when needed.
+sandbox_mode = "read-only"
+approval_policy = "untrusted"
