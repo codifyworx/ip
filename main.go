@@ -28,9 +28,10 @@ type config struct {
 }
 
 type app struct {
-	cfg    config
-	cityDB *geoip2.Reader
-	asnDB  *geoip2.Reader
+	cfg        config
+	cityDB     *geoip2.Reader
+	asnDB      *geoip2.Reader
+	lookupAddr func(string) ([]string, error)
 }
 
 type ipResponse struct {
@@ -49,6 +50,11 @@ type ipResponse struct {
 	Headers      map[string]string `json:"headers,omitempty"`
 	Method       string            `json:"method,omitempty"`
 	Path         string            `json:"path,omitempty"`
+}
+
+type describeOptions struct {
+	includeHeaders    bool
+	includeReverseDNS bool
 }
 
 var pageTemplate = template.Must(template.New("index").Parse(`<!doctype html>
@@ -145,7 +151,10 @@ func loadConfig() (config, error) {
 }
 
 func newApp(cfg config) (*app, error) {
-	a := &app{cfg: cfg}
+	a := &app{
+		cfg:        cfg,
+		lookupAddr: net.LookupAddr,
+	}
 	var err error
 
 	if cfg.geoCityPath != "" {
@@ -196,7 +205,9 @@ func (a *app) route(w http.ResponseWriter, r *http.Request) {
 	case "/headers":
 		a.handleHeaders(w, r)
 	case "/json", "/geo", "/all.json":
-		a.writeJSON(w, a.describe(r, path == "/headers" || path == "/all.json"))
+		a.writeJSON(w, a.describe(r, describeOptions{includeHeaders: path == "/all.json"}))
+	case "/json.rdns":
+		a.writeJSON(w, a.describe(r, describeOptions{includeReverseDNS: true}))
 	case "/all":
 		a.handleAllText(w, r)
 	case "/healthz":
@@ -218,7 +229,7 @@ func (a *app) stripBasePath(path string) string {
 
 func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	info := a.describe(r, true)
+	info := a.describe(r, describeOptions{includeHeaders: true})
 	data := struct {
 		ipResponse
 		BaseURL string
@@ -241,7 +252,7 @@ func (a *app) handleHeaders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleAllText(w http.ResponseWriter, r *http.Request) {
-	info := a.describe(r, true)
+	info := a.describe(r, describeOptions{includeHeaders: true})
 	lines := []string{
 		"ip: " + info.IP,
 		"version: " + info.Version,
@@ -265,7 +276,7 @@ func (a *app) handleAllText(w http.ResponseWriter, r *http.Request) {
 	a.writeText(w, strings.Join(lines, "\n")+"\n")
 }
 
-func (a *app) describe(r *http.Request, includeHeaders bool) ipResponse {
+func (a *app) describe(r *http.Request, opts describeOptions) ipResponse {
 	ip := a.clientIP(r)
 	resp := ipResponse{
 		IP:      ip.String(),
@@ -273,12 +284,15 @@ func (a *app) describe(r *http.Request, includeHeaders bool) ipResponse {
 		Method:  r.Method,
 		Path:    r.URL.Path,
 	}
-	if includeHeaders {
+	if opts.includeHeaders {
 		resp.Headers = headersToMap(r)
 	}
 
-	if names, err := net.LookupAddr(ip.String()); err == nil && len(names) > 0 {
-		resp.ReverseDNS = strings.TrimSuffix(names[0], ".")
+	if opts.includeReverseDNS {
+		names, err := a.lookupAddr(ip.String())
+		if err == nil && len(names) > 0 {
+			resp.ReverseDNS = strings.TrimSuffix(names[0], ".")
+		}
 	}
 
 	if a.asnDB != nil {
