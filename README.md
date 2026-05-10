@@ -37,6 +37,14 @@ On `ifconfig.fyi`, the same handlers run at the domain root:
 /healthz    health check
 ```
 
+## Rate Limiting
+
+`ifconfig.fyi` defaults to a fixed-window rate limit of 20 requests per minute per client IP. There is no burst allowance and no separate concurrent-request allowance. `/healthz` is not rate limited.
+
+When a client exceeds the limit, the service returns `429 Too Many Requests` with `Retry-After` and a plain-text response noting that users behind CGNAT, VPNs, corporate proxies, or shared NAT may share a public IP.
+
+The limit is enabled by default when `BASE_PATH=/`. Set `RATE_LIMIT_REQUESTS_PER_MINUTE` to a non-negative integer to override it; `0` disables the app-level limiter.
+
 ## Run Locally
 
 ```bash

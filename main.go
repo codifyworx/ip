@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/oschwald/geoip2-golang"
@@ -25,13 +26,19 @@ type config struct {
 	readTimeout  time.Duration
 	writeTimeout time.Duration
 	idleTimeout  time.Duration
+	rateLimit    rateLimitConfig
+}
+
+type rateLimitConfig struct {
+	requestsPerMinute int
 }
 
 type app struct {
-	cfg        config
-	cityDB     *geoip2.Reader
-	asnDB      *geoip2.Reader
-	lookupAddr func(string) ([]string, error)
+	cfg         config
+	cityDB      *geoip2.Reader
+	asnDB       *geoip2.Reader
+	lookupAddr  func(string) ([]string, error)
+	rateLimiter *fixedWindowRateLimiter
 }
 
 type ipResponse struct {
@@ -55,6 +62,20 @@ type ipResponse struct {
 type describeOptions struct {
 	includeHeaders    bool
 	includeReverseDNS bool
+}
+
+type fixedWindowRateLimiter struct {
+	mu       sync.Mutex
+	now      func() time.Time
+	limit    int
+	window   time.Duration
+	buckets  map[string]rateLimitBucket
+	lastTrim time.Time
+}
+
+type rateLimitBucket struct {
+	start time.Time
+	count int
 }
 
 var pageTemplate = template.Must(template.New("index").Parse(`<!doctype html>
@@ -133,6 +154,15 @@ func loadConfig() (config, error) {
 		writeTimeout: 10 * time.Second,
 		idleTimeout:  60 * time.Second,
 	}
+	rateLimitDefault := 0
+	if cfg.basePath == "" {
+		rateLimitDefault = 20
+	}
+	rateLimit, err := envInt("RATE_LIMIT_REQUESTS_PER_MINUTE", rateLimitDefault)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.rateLimit.requestsPerMinute = rateLimit
 
 	cidrs := env("TRUSTED_PROXY_CIDRS", "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
 	for _, raw := range strings.Split(cidrs, ",") {
@@ -154,6 +184,9 @@ func newApp(cfg config) (*app, error) {
 	a := &app{
 		cfg:        cfg,
 		lookupAddr: net.LookupAddr,
+	}
+	if cfg.rateLimit.requestsPerMinute > 0 {
+		a.rateLimiter = newFixedWindowRateLimiter(cfg.rateLimit.requestsPerMinute, time.Minute, time.Now)
 	}
 	var err error
 
@@ -184,6 +217,10 @@ func (a *app) close() {
 
 func (a *app) route(w http.ResponseWriter, r *http.Request) {
 	path := a.stripBasePath(r.URL.Path)
+	if wait, limited := a.rateLimited(r, path); limited {
+		a.writeRateLimited(w, wait)
+		return
+	}
 
 	switch path {
 	case "/", "":
@@ -215,6 +252,30 @@ func (a *app) route(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (a *app) rateLimited(r *http.Request, path string) (time.Duration, bool) {
+	if a.rateLimiter == nil || path == "/healthz" {
+		return 0, false
+	}
+	allowed, wait := a.rateLimiter.allow(a.clientIP(r).String())
+	return wait, !allowed
+}
+
+func (a *app) writeRateLimited(w http.ResponseWriter, wait time.Duration) {
+	retryAfter := int(wait.Round(time.Second).Seconds())
+	if retryAfter < 1 {
+		retryAfter = 1
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	w.WriteHeader(http.StatusTooManyRequests)
+	_, _ = fmt.Fprintf(
+		w,
+		"Too many requests. ifconfig.fyi allows %d requests per minute per client IP. If you are behind CGNAT, a VPN, a corporate proxy, or shared NAT, other users may be sharing your public IP. Try again in about %d seconds.\n",
+		a.cfg.rateLimit.requestsPerMinute,
+		retryAfter,
+	)
 }
 
 func (a *app) stripBasePath(path string) string {
@@ -432,6 +493,18 @@ func env(name string, fallback string) string {
 	return fallback
 }
 
+func envInt(name string, fallback int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return fallback, fmt.Errorf("invalid %s %q: must be a non-negative integer", name, raw)
+	}
+	return value, nil
+}
+
 func normalizeBasePath(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" || path == "/" {
@@ -446,4 +519,47 @@ func ipDisplayClass(version string) string {
 		return "ipv6"
 	}
 	return "ipv4"
+}
+
+func newFixedWindowRateLimiter(limit int, window time.Duration, now func() time.Time) *fixedWindowRateLimiter {
+	return &fixedWindowRateLimiter{
+		now:     now,
+		limit:   limit,
+		window:  window,
+		buckets: make(map[string]rateLimitBucket),
+	}
+}
+
+func (l *fixedWindowRateLimiter) allow(key string) (bool, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := l.now()
+	l.trim(now)
+
+	bucket := l.buckets[key]
+	if bucket.start.IsZero() || now.Sub(bucket.start) >= l.window {
+		l.buckets[key] = rateLimitBucket{start: now, count: 1}
+		return true, 0
+	}
+
+	if bucket.count >= l.limit {
+		return false, bucket.start.Add(l.window).Sub(now)
+	}
+
+	bucket.count++
+	l.buckets[key] = bucket
+	return true, 0
+}
+
+func (l *fixedWindowRateLimiter) trim(now time.Time) {
+	if !l.lastTrim.IsZero() && now.Sub(l.lastTrim) < l.window {
+		return
+	}
+	for key, bucket := range l.buckets {
+		if now.Sub(bucket.start) >= l.window {
+			delete(l.buckets, key)
+		}
+	}
+	l.lastTrim = now
 }
