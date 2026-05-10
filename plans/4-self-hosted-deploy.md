@@ -10,18 +10,21 @@ Move codifyworx/ip deployment out of the GitHub-hosted test job and into a separ
 
 ## Steps
 
-- [x] Split deploy into a self-hosted workflow job.
+- [x] Split deploy into a self-hosted workflow.
 - [x] Keep tests and container security as deploy prerequisites.
 - [x] Preserve `PUBLISH_SSH_KEY_BASE64` preferred / `PUBLISH_SSH_KEY` fallback.
 - [x] Replace live `git reset --hard` with a dirty-checking deploy path.
 - [x] Validate workflow syntax and whitespace.
+- [x] Keep CI green when no self-hosted runner is registered.
 
 ## Decisions
 
 - Do not manually deploy as part of this work.
-- Keep existing `main`, schedule, and manual workflow triggers.
+- Keep CI responsible for tests and Trivy.
+- Trigger deploy after a successful CI run on `main` or by manual dispatch.
+- Require `SELF_HOSTED_DEPLOY=true` before scheduling the self-hosted deploy job.
 
 ## Where I Left Off
 
 Last updated: 2026-05-09
-Workflow patch is in place and validation passed; PR is next.
+Deploy was split from CI so the repository can keep passing CI before a self-hosted runner is registered.

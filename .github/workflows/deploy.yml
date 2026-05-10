@@ -1,0 +1,115 @@
+name: deploy
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.SELF_HOSTED_DEPLOY == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Check deploy credentials
+        id: deploy-credentials
+        env:
+          PUBLISH_SSH_KEY_BASE64: ${{ secrets.PUBLISH_SSH_KEY_BASE64 }}
+          PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
+        run: |
+          if [ -n "$PUBLISH_SSH_KEY_BASE64" ] || [ -n "$PUBLISH_SSH_KEY" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Missing PUBLISH_SSH_KEY_BASE64 or PUBLISH_SSH_KEY."
+            exit 1
+          fi
+
+      - name: Set up deploy SSH key
+        if: steps.deploy-credentials.outputs.configured == 'true'
+        env:
+          PUBLISH_SSH_KEY_BASE64: ${{ secrets.PUBLISH_SSH_KEY_BASE64 }}
+          PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
+          PUBLISH_HOST: ${{ vars.PUBLISH_HOST || 'codifyworx.com' }}
+        run: |
+          key_path="${RUNNER_TEMP}/publish_key"
+          known_hosts_path="${RUNNER_TEMP}/publish_known_hosts"
+
+          python3 - "$key_path" <<'PY'
+          import base64
+          import os
+          import sys
+          from pathlib import Path
+
+          key_b64 = os.environ.get("PUBLISH_SSH_KEY_BASE64", "").strip()
+          raw_key = os.environ.get("PUBLISH_SSH_KEY", "")
+          if key_b64:
+              key = base64.b64decode(key_b64).decode("utf-8")
+          elif raw_key:
+              key = raw_key.replace("\r", "").replace("\\n", "\n")
+          else:
+              raise SystemExit("Missing publish SSH key secret. Set PUBLISH_SSH_KEY_BASE64 or PUBLISH_SSH_KEY.")
+          if not key.endswith("\n"):
+              key += "\n"
+          Path(sys.argv[1]).write_text(key)
+          PY
+          chmod 600 "$key_path"
+          ssh-keygen -y -f "$key_path" >/dev/null
+          ssh-keyscan -H "$PUBLISH_HOST" > "$known_hosts_path" 2>/dev/null
+          if [ ! -s "$known_hosts_path" ]; then
+            echo "::error::ssh-keyscan did not return a host key for $PUBLISH_HOST."
+            exit 1
+          fi
+          chmod 600 "$known_hosts_path"
+          {
+            echo "PUBLISH_KEY_PATH=$key_path"
+            echo "PUBLISH_KNOWN_HOSTS=$known_hosts_path"
+          } >> "$GITHUB_ENV"
+
+      - name: Deploy to publish host
+        if: steps.deploy-credentials.outputs.configured == 'true'
+        env:
+          PUBLISH_HOST: ${{ vars.PUBLISH_HOST || 'codifyworx.com' }}
+          PUBLISH_USER: ${{ vars.PUBLISH_USER || 'root' }}
+        run: |
+          ssh \
+            -i "$PUBLISH_KEY_PATH" \
+            -o UserKnownHostsFile="$PUBLISH_KNOWN_HOSTS" \
+            -o StrictHostKeyChecking=yes \
+            "${PUBLISH_USER}@${PUBLISH_HOST}" <<'SSH_EOF'
+          set -euo pipefail
+          mkdir -p /app
+          if [ ! -d /app/ip/.git ]; then
+            git clone https://github.com/codifyworx/ip.git /app/ip
+          fi
+          cd /app/ip
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Refusing to deploy because /app/ip has uncommitted changes:" >&2
+            git status --short >&2
+            exit 1
+          fi
+          git fetch origin main
+          git merge --ff-only origin/main
+          ./scripts/refresh-dbip-lite.sh
+          SSH_EOF
+
+      - name: Cleanup deploy SSH key
+        if: always()
+        run: |
+          if [ -n "${PUBLISH_KEY_PATH:-}" ]; then
+            rm -f "$PUBLISH_KEY_PATH"
+          fi
+          if [ -n "${PUBLISH_KNOWN_HOSTS:-}" ]; then
+            rm -f "$PUBLISH_KNOWN_HOSTS"
+          fi
