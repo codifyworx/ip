@@ -34,7 +34,7 @@ jobs:
       - run: go test ./...
 
   trivy-images:
-    name: trivy / ${{ matrix.name }}
+    name: ci trivy / ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
