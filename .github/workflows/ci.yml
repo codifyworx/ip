@@ -32,69 +32,45 @@ jobs:
           go mod tidy
           git diff --exit-code -- go.mod go.sum
       - run: go test ./...
-      - run: docker build -t local/codify-ip:ci .
-      - name: Check deploy credentials
-        id: deploy-credentials
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        env:
-          PUBLISH_SSH_KEY_BASE64: ${{ secrets.PUBLISH_SSH_KEY_BASE64 }}
-          PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
-        run: |
-          if [ -n "$PUBLISH_SSH_KEY_BASE64" ] || [ -n "$PUBLISH_SSH_KEY" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping deploy because PUBLISH_SSH_KEY_BASE64 or PUBLISH_SSH_KEY is not configured."
-          fi
-      - name: Set up deploy SSH key
-        if: steps.deploy-credentials.outputs.configured == 'true'
-        env:
-          PUBLISH_SSH_KEY_BASE64: ${{ secrets.PUBLISH_SSH_KEY_BASE64 }}
-          PUBLISH_SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          python3 - <<'PY'
-          import base64
-          import os
-          from pathlib import Path
 
-          key_b64 = os.environ.get("PUBLISH_SSH_KEY_BASE64", "").strip()
-          raw_key = os.environ.get("PUBLISH_SSH_KEY", "")
-          if key_b64:
-              key = base64.b64decode(key_b64).decode("utf-8")
-          elif raw_key:
-              key = raw_key.replace("\r", "").replace("\\n", "\n")
-          else:
-              raise SystemExit("Missing publish SSH key secret. Set PUBLISH_SSH_KEY_BASE64 or PUBLISH_SSH_KEY.")
-          if not key.endswith("\n"):
-              key += "\n"
-          Path(os.path.expanduser("~/.ssh/publish_key")).write_text(key)
-          PY
-          chmod 600 ~/.ssh/publish_key
-          ssh-keyscan -H ${{ vars.PUBLISH_HOST || 'codifyworx.com' }} >> ~/.ssh/known_hosts 2>/dev/null
-          cat >> ~/.ssh/config <<SSH_EOF
-          Host ${{ vars.PUBLISH_HOST || 'codifyworx.com' }}
-            IdentityFile ~/.ssh/publish_key
-            StrictHostKeyChecking accept-new
-          SSH_EOF
-          chmod 600 ~/.ssh/config
-      - name: Deploy to codifyworx.com
-        if: steps.deploy-credentials.outputs.configured == 'true'
-        env:
-          PUBLISH_HOST: ${{ vars.PUBLISH_HOST || 'codifyworx.com' }}
-          PUBLISH_USER: ${{ vars.PUBLISH_USER || 'root' }}
-        run: |
-          ssh "${PUBLISH_USER}@${PUBLISH_HOST}" <<'SSH_EOF'
-          set -euo pipefail
-          mkdir -p /app
-          if [ ! -d /app/ip/.git ]; then
-            git clone https://github.com/codifyworx/ip.git /app/ip
-          fi
-          cd /app/ip
-          git fetch origin main
-          git reset --hard origin/main
-          ./scripts/refresh-dbip-lite.sh
-          SSH_EOF
-      - name: Cleanup deploy SSH key
-        if: always()
-        run: rm -f ~/.ssh/publish_key ~/.ssh/config
+  trivy-images:
+    name: ci trivy / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: codify-ip
+            context: .
+            file: Dockerfile
+            image: local/codify-ip:${{ github.sha }}
+            platform: linux/amd64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.0.0
+
+      - name: Build image
+        uses: docker/build-push-action@v7.1.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: ${{ matrix.image }}
+          cache-from: type=gha,scope=ci-trivy-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=ci-trivy-${{ matrix.name }}
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
