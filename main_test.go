@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPublicJSONSkipsReverseDNS(t *testing.T) {
@@ -95,6 +96,52 @@ func TestPublicSummaryPathsSkipReverseDNS(t *testing.T) {
 	}
 }
 
+func TestRateLimitAllowsTwentyRequestsPerMinute(t *testing.T) {
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	a := testRateLimitedApp(func() time.Time { return now })
+
+	for i := 0; i < 20; i++ {
+		resp := performRequest(a, "/ip")
+		if resp.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d, want %d", i+1, resp.Code, http.StatusOK)
+		}
+	}
+
+	resp := performRequest(a, "/ip")
+	if resp.Code != http.StatusTooManyRequests {
+		t.Fatalf("request 21 status = %d, want %d", resp.Code, http.StatusTooManyRequests)
+	}
+	if got := resp.Header().Get("Retry-After"); got != "60" {
+		t.Fatalf("Retry-After = %q, want 60", got)
+	}
+	if body := resp.Body.String(); !strings.Contains(body, "CGNAT") {
+		t.Fatalf("rate limit response did not mention CGNAT: %s", body)
+	}
+
+	now = now.Add(time.Minute)
+	resp = performRequest(a, "/ip")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("after window reset status = %d, want %d", resp.Code, http.StatusOK)
+	}
+}
+
+func TestRateLimitSkipsHealthCheck(t *testing.T) {
+	now := time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC)
+	a := testRateLimitedApp(func() time.Time { return now })
+
+	for i := 0; i < 20; i++ {
+		resp := performRequest(a, "/ip")
+		if resp.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d, want %d", i+1, resp.Code, http.StatusOK)
+		}
+	}
+
+	resp := performRequest(a, "/healthz")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("healthz status = %d, want %d", resp.Code, http.StatusOK)
+	}
+}
+
 func testApp(lookupAddr func(string) ([]string, error)) *app {
 	return &app{
 		cfg: config{
@@ -103,6 +150,13 @@ func testApp(lookupAddr func(string) ([]string, error)) *app {
 		},
 		lookupAddr: lookupAddr,
 	}
+}
+
+func testRateLimitedApp(now func() time.Time) *app {
+	a := testApp(func(string) ([]string, error) { return nil, nil })
+	a.cfg.rateLimit.requestsPerMinute = 20
+	a.rateLimiter = newFixedWindowRateLimiter(20, time.Minute, now)
+	return a
 }
 
 func performRequest(a *app, path string) *httptest.ResponseRecorder {

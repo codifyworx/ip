@@ -45,6 +45,19 @@ This creates:
 - `codify-ip` listening on `127.0.0.1:3010`
 - `ifconfig-fyi` listening on `127.0.0.1:3011`
 
+## Rate Limiting
+
+The root-hosted `ifconfig.fyi` service enables app-level fixed-window rate limiting by default:
+
+- 20 requests per minute per client IP
+- no burst allowance
+- no separate concurrent-request allowance
+- `/healthz` is excluded
+
+Excess requests receive `429 Too Many Requests` with `Retry-After`. The response text notes that users behind CGNAT, VPNs, corporate proxies, or shared NAT may share the same public IP and therefore the same quota.
+
+The default applies when `BASE_PATH=/`. Set `RATE_LIMIT_REQUESTS_PER_MINUTE` to a non-negative integer to override it; `0` disables the limiter.
+
 ## nginx
 
 `codifyworx.com/ip/` is expected to proxy `/ip` and `/ip/*` to `127.0.0.1:3010`.
