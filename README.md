@@ -113,22 +113,8 @@ labels:
 
 ## Deployment
 
-`main` CI deploys to `/app/ip` on `codifyworx.com` after tests pass.
-The deploy step updates DB-IP Lite databases under `/app/ip/geoip`, rebuilds the container, restarts it, and health-checks `/ip/healthz`.
-Compose runs two services from the same image: `codify-ip` for path-based `codifyworx.com/ip/` on `127.0.0.1:3010`, and `ifconfig-fyi` for root-hosted `ifconfig.fyi/` on `127.0.0.1:3011`.
+`main` CI deploys through the trusted codifyworx runner request bridge after tests pass.
+The workflow writes a `deploy-main` request; host-side code in `codifyworx/github-runners` verifies the repo, branch, and exact SHA before touching `/app/ip`.
 
-CI also runs monthly on the 3rd to refresh DB-IP Lite data when publish SSH credentials are configured.
-The production host also runs `codify-ip-geoip-update.timer`, which calls `scripts/refresh-dbip-lite.sh` monthly so database updates do not depend on an app deploy.
-
-It expects the same SSH secret pattern used by other Codifyworx projects:
-
-```text
-PUBLISH_SSH_KEY_BASE64 or PUBLISH_SSH_KEY
-```
-
-Optional repo/org variables:
-
-```text
-PUBLISH_HOST=codifyworx.com
-PUBLISH_USER=root
-```
+The trusted deploy harness updates DB-IP Lite databases under `/app/ip/geoip`, rebuilds from the production Dockerfile, restarts the containers with the trusted Compose file in the runner repo, and health-checks `/ip/healthz` and `/healthz`.
+The trusted Compose file runs two services from the same image: `codify-ip` for path-based `codifyworx.com/ip/` on `127.0.0.1:3010`, and `ifconfig-fyi` for root-hosted `ifconfig.fyi/` on `127.0.0.1:3011`.

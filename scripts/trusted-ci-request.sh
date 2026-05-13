@@ -9,8 +9,8 @@ timeout_seconds="${CODIFY_IP_VALIDATION_TIMEOUT_SECONDS:-3600}"
 poll_seconds="${CODIFY_IP_VALIDATION_POLL_SECONDS:-5}"
 
 repo="${GITHUB_REPOSITORY:-codifyworx/ip}"
-sha="${GITHUB_SHA:-}"
-ref="${GITHUB_REF:-}"
+sha="${CODIFY_IP_REQUEST_SHA:-${GITHUB_SHA:-}}"
+ref="${CODIFY_IP_REQUEST_REF:-${GITHUB_REF:-}}"
 run_id="${GITHUB_RUN_ID:-manual}"
 run_attempt="${GITHUB_RUN_ATTEMPT:-1}"
 
@@ -34,7 +34,10 @@ fi
 [[ -n "${ref}" ]] || die "GITHUB_REF is required."
 [[ "${run_id}" =~ ^[0-9]+$ ]] || die "GITHUB_RUN_ID must be numeric."
 [[ "${run_attempt}" =~ ^[0-9]+$ ]] || die "GITHUB_RUN_ATTEMPT must be numeric."
-[ "${mode}" = "container-security" ] || die "CODIFY_IP_VALIDATION_MODE must be container-security."
+case "${mode}" in
+  container-security|deploy-main) ;;
+  *) die "CODIFY_IP_VALIDATION_MODE must be container-security or deploy-main." ;;
+esac
 
 mkdir -p "${request_dir}" "${result_dir}"
 [ -w "${request_dir}" ] || die "Request directory is not writable by the runner: ${request_dir}"
@@ -63,7 +66,7 @@ jq -n \
   }' > "${tmp_path}"
 mv "${tmp_path}" "${request_path}"
 
-echo "Queued trusted container-security request: ${request_path}"
+echo "Queued trusted ${mode} request: ${request_path}"
 echo "Waiting for result: ${result_path}"
 
 deadline=$((SECONDS + timeout_seconds))
@@ -86,4 +89,4 @@ while [ "${SECONDS}" -lt "${deadline}" ]; do
   sleep "${poll_seconds}"
 done
 
-die "Timed out waiting for trusted container-security result after ${timeout_seconds}s."
+die "Timed out waiting for trusted ${mode} result after ${timeout_seconds}s."

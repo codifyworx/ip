@@ -20,27 +20,14 @@ concurrency:
 jobs:
   deploy:
     if: vars.SELF_HOSTED_DEPLOY != 'false' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
-    runs-on: [self-hosted, linux, x64, codifyworx-ci]
+    runs-on: [self-hosted, linux, x64, codify-ip-ci]
     env:
-      DEPLOY_PATH: /app/ip
+      CODIFY_IP_VALIDATION_MODE: deploy-main
+      CODIFY_IP_VALIDATION_TIMEOUT_SECONDS: "900"
+      CODIFY_IP_REQUEST_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      CODIFY_IP_REQUEST_REF: refs/heads/${{ github.event.workflow_run.head_branch || github.ref_name }}
     steps:
-      - name: Deploy local checkout
-        run: |
-          set -euo pipefail
+      - uses: actions/checkout@v4
 
-          if [ ! -d "$DEPLOY_PATH/.git" ]; then
-            echo "::error::DEPLOY_PATH does not contain a git checkout: $DEPLOY_PATH"
-            exit 1
-          fi
-
-          cd "$DEPLOY_PATH"
-          git fetch origin main
-
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Refusing to deploy because $DEPLOY_PATH has uncommitted changes."
-            git status --short
-            exit 1
-          fi
-
-          git merge --ff-only origin/main
-          ./scripts/refresh-dbip-lite.sh
+      - name: Request trusted deploy
+        run: scripts/trusted-ci-request.sh
