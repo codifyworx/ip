@@ -15,43 +15,15 @@ permissions:
 
 jobs:
   trivy-images:
-    name: trivy / ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: codify-ip
-            context: .
-            file: Dockerfile
-            image: local/codify-ip:${{ github.sha }}
-            platform: linux/amd64
-
+    name: trusted trivy image scan
+    runs-on: [self-hosted, linux, x64, codifyworx-ci]
+    timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.0.0
-
-      - name: Build image
-        uses: docker/build-push-action@v7.1.0
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.file }}
-          platforms: ${{ matrix.platform }}
-          load: true
-          tags: ${{ matrix.image }}
-          cache-from: type=gha,scope=trivy-${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=trivy-${{ matrix.name }}
-
-      - name: Scan image
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ matrix.image }}
-          scanners: vuln
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          format: table
+      - name: Request trusted container security validation
+        env:
+          CODIFY_IP_VALIDATION_MODE: container-security
+          CODIFY_IP_VALIDATION_TIMEOUT_SECONDS: "3600"
+        run: scripts/trusted-ci-request.sh
