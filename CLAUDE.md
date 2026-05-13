@@ -78,6 +78,14 @@ git worktree add ../<repo>-claude -b claude/main
 - CLAWS or other deployed-state scanners still matter. Trivy is the pre-merge/pre-deploy guardrail; deployed scanners confirm what is actually running.
 - When a new Dockerfile or image-producing workflow is added, updating the Trivy matrix is part of the same change.
 
+### Trusted CI Containers
+
+- On codifyworx self-hosted runners, any CI harness image, runner image, validation image, Compose file, Docker-running script, or host-side script that CI creates or runs must be owned by the trusted `github-runners` infrastructure repo.
+- Application repositories may submit CI requests, app source, test source, and ordinary non-privileged commands, but they must not define the Dockerfile, Compose file, bind mounts, privileges, Docker socket access, or host paths used by trusted-host CI.
+- Production or local-development Dockerfiles may remain in application repos, but trusted-runner workflows must access them only through `github-runners` scripts with explicit allowlists. Repo workflows must not run arbitrary Docker build/run/Compose commands on the trusted host.
+- Workflows should target stable org-level runner labels such as `codifyworx-ci`, with optional capability labels like `android`; do not bake hostnames such as `nuc01` into app repo workflow labels.
+- The live `github-runners` repo is trusted infrastructure. It is writable only by the infrastructure owner; other developers request changes through issues or reviewed patches.
+
 ## Safety
 
 ### Destructive Actions

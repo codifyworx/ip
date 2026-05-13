@@ -20,7 +20,7 @@ concurrency:
 jobs:
   deploy:
     if: vars.SELF_HOSTED_DEPLOY != 'false' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, linux, x64, codifyworx-ci]
     env:
       DEPLOY_PATH: /app/ip
     steps:
