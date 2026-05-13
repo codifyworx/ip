@@ -1,11 +1,11 @@
 name: container-security
 
 on:
-  pull_request:
+  # This public repo uses a repo-scoped trusted request runner. Do not run this
+  # host-side Docker scan from pull_request events.
   push:
     branches:
       - main
-      - develop
   workflow_dispatch:
   schedule:
     - cron: "17 10 * * 1"
@@ -16,7 +16,7 @@ permissions:
 jobs:
   trivy-images:
     name: trusted trivy image scan
-    runs-on: [self-hosted, linux, x64, codifyworx-ci]
+    runs-on: [self-hosted, linux, x64, codify-ip-ci]
     timeout-minutes: 60
     steps:
       - name: Checkout
