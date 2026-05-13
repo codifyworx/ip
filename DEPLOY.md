@@ -14,33 +14,36 @@ Both containers are built from the same source tree and image. The only function
 
 The host needs:
 
-- Docker with `docker compose`
 - nginx
-- git
 - outbound access to:
   - `github.com`
   - `download.db-ip.com`
 
-The deployment checkout lives at `/app/ip`.
+Container deployment, the trusted Compose file, and the monthly DB-IP refresh timer are owned by `codifyworx/github-runners`.
+The application checkout lives at `/app/ip`, but the app repo must not own production Compose execution.
 
 ## First-Time Host Bootstrap
 
-Clone the repo:
+Bootstrap the trusted runner repo first:
 
 ```bash
 mkdir -p /app
-git clone https://github.com/codifyworx/ip.git /app/ip
-cd /app/ip
+git clone git@github.com:codifyworx/github-runners.git /app/github-runners
+cd /app/github-runners
 ```
 
-Fetch the DB-IP Lite databases and start the containers:
+Prepare the IP bridge/source paths and install the trusted refresh timer:
 
 ```bash
-./scripts/update-dbip-lite.sh geoip
-docker compose up -d --build
+sudo projects/container-security/scripts/prepare-host-paths.sh ip
+sudo cp systemd/codify-ip-geoip-update.service /etc/systemd/system/
+sudo cp systemd/codify-ip-geoip-update.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now codify-ip-geoip-update.timer
+projects/ip/scripts/refresh-dbip-lite.sh
 ```
 
-This creates:
+The trusted deploy creates or updates `/app/ip`, downloads DB-IP Lite data, builds the image, and starts:
 
 - `codify-ip` listening on `127.0.0.1:3010`
 - `ifconfig-fyi` listening on `127.0.0.1:3011`
@@ -133,64 +136,33 @@ If the host continues serving stale HTTP behavior after a reload, do a full rest
 systemctl restart nginx
 ```
 
-## GeoIP Refresh Timer
-
-Install the systemd unit and timer so DB-IP Lite updates happen monthly:
-
-```bash
-cp deploy/systemd/codify-ip-geoip-update.service /etc/systemd/system/
-cp deploy/systemd/codify-ip-geoip-update.timer /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable --now codify-ip-geoip-update.timer
-```
-
-The timer runs `scripts/refresh-dbip-lite.sh`, which:
-
-1. downloads the latest DB-IP Lite MMDB files into `/app/ip/geoip`
-2. rebuilds the image
-3. restarts the compose services
-4. health-checks both listeners
-
 ## CI Deploy
 
-`main` deploys through GitHub Actions in [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
-Required secret:
-
-- `PUBLISH_SSH_KEY_BASE64` or `PUBLISH_SSH_KEY`
-
-Optional repository or organization variables:
-
-- `PUBLISH_HOST=codifyworx.com`
-- `PUBLISH_USER=root`
+`main` deploys through GitHub Actions in [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
 
 The CI deploy job:
 
-1. ensures `/app/ip` exists
-2. clones the repo if needed
-3. resets the checkout to `origin/main`
-4. runs `./scripts/refresh-dbip-lite.sh`
+1. runs on the repo-scoped `codify-ip-ci` request runner
+2. writes a `deploy-main` request with the exact `main` SHA that passed CI
+3. waits for the trusted host-side harness in `codifyworx/github-runners`
 
-Because CI does a hard reset to `origin/main`, any manual edits made directly on the host are temporary until they are committed and pushed.
+The trusted harness verifies `codifyworx/ip`, `refs/heads/main`, and the exact SHA before updating `/app/ip`.
+It uses trusted runner-repo code for DB-IP downloads and trusted runner-repo Compose for container rebuild/restart.
 
 ## Manual Update
 
-For a manual update from the host checkout:
+For a manual production update, run the trusted refresh/deploy harness from the runner repo:
 
 ```bash
-cd /app/ip
-git fetch origin main
-git reset --hard origin/main
-./scripts/refresh-dbip-lite.sh
+cd /app/github-runners
+projects/ip/scripts/refresh-dbip-lite.sh
 ```
 
-For a local unpushed change, copy the changed files into `/app/ip`, then rebuild:
+For local development only, use the app repo Compose file on a development machine:
 
 ```bash
-cd /app/ip
+./scripts/update-dbip-lite.sh geoip
 docker compose up -d --build
-curl -fsS http://127.0.0.1:3010/ip/healthz
-curl -fsS http://127.0.0.1:3011/healthz
 ```
 
 ## Validation
