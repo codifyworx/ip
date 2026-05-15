@@ -17,7 +17,7 @@ If you need different permissions or sandboxing for a session, use the appropria
 
 - `main` — stable releases only. Always deployable.
 - `develop` — beta/integration branch. Features accumulate here and are tested together before promotion to main.
-- `bug/<username>-<desc>` or `feat/<username>-<desc>` — individual work branches, created off `develop`
+- `bug/<issue-number>-<desc>` or `feat/<issue-number>-<desc>` — individual work branches, created off `develop`
 
 ### Issues
 - All bugs and features must have a GitHub issue (prefixed `bug:` or `feat:`)
@@ -27,27 +27,31 @@ If you need different permissions or sandboxing for a session, use the appropria
 ### Development Flow
 
 1. **Open a GitHub issue** (`bug:` or `feat:` prefix)
-2. **Create a branch off `develop`**: `feat/<username>-<desc>` or `bug/<username>-<desc>`
-3. **Create a plan** in `plans/<issue-number>-<desc>.md` for features. Bug fixes can use the GitHub issue as the plan.
-4. **Develop on the branch**
-5. **Squash merge into `develop`** with a single descriptive commit referencing the issue
-6. **Delete the feature/bug branch** after merge
-7. **Close the GitHub issue** after merge
-8. **Cut beta releases from `develop`** (e.g., `1.2.0-beta.1`, `1.2.0-beta.2`) for testing
-9. **When stable, squash merge `develop` into `main`** and tag a stable release
+2. **Create a branch off `develop`**: `feat/<issue-number>-<desc>` or `bug/<issue-number>-<desc>`
+3. **Create a dedicated worktree for that branch**: `../<repo>-issue-<issue-number>`
+4. **Create a plan** in `plans/<issue-number>-<desc>.md` for features. Bug fixes can use the GitHub issue as the plan.
+5. **Develop only inside the issue worktree**
+6. **Squash merge into `develop`** with a single descriptive commit referencing the issue
+7. **Delete the feature/bug branch and remove the issue worktree** after merge
+8. **Close the GitHub issue** after merge
+9. **Cut beta releases from `develop`** (e.g., `1.2.0-beta.1`, `1.2.0-beta.2`) for testing
+10. **When stable, squash merge `develop` into `main`** and tag a stable release
 
 ### Multi-Agent Worktrees
 
-- If more than one AI agent is working on the repo, each agent must use a unique git worktree.
+- Every bug or feature issue gets its own branch and its own git worktree.
 - Do not run multiple agents in the same checked-out directory.
+- Treat the primary repo checkout as coordination/read-only unless the user explicitly assigns that checkout.
+- Use predictable worktree paths and branch names keyed by the issue number.
 - Recommended pattern:
 
 ```sh
-git worktree add ../<repo>-codex -b codex/main
-git worktree add ../<repo>-claude -b claude/main
+git fetch origin
+git worktree add ../<repo>-issue-123 -b feat/123-short-desc origin/develop
 ```
 
 - Parallel work should flow through branches, commits, diffs, and merges, not through multiple agents sharing one working tree.
+- If you discover another agent has edited the same checkout, stop and coordinate before making more changes.
 
 ## Engineering Standards
 
